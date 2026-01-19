@@ -39,14 +39,14 @@ class YouTubeDownloaderModern:
         self.queue_thread = None
         self.queue_file = "download_queue.json"
         
-        # Start Flask API server in background
+        self.setup_ui()
+        self.setup_history_window()
+        
+        # Start Flask API server in background (after UI is initialized)
         self.start_api_server()
         
         # Periodically sync queue from file (for external additions)
         self.sync_queue_from_file()
-        
-        self.setup_ui()
-        self.setup_history_window()
         
     def load_config(self):
         """Load configuration from file"""
@@ -383,9 +383,10 @@ class YouTubeDownloaderModern:
     
     def log_message(self, message):
         """Add message to log"""
-        self.log_text.insert("end", f"{message}\n")
-        self.log_text.see("end")
-        self.root.update_idletasks()
+        if hasattr(self, 'log_text') and self.log_text:
+            self.log_text.insert("end", f"{message}\n")
+            self.log_text.see("end")
+            self.root.update_idletasks()
     
     def update_status(self, message, color="#22c55e"):
         """Update status indicator"""
