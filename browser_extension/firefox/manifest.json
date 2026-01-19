@@ -1,0 +1,36 @@
+{
+  "manifest_version": 2,
+  "name": "YouTube Downloader",
+  "version": "1.0.0",
+  "description": "One-click download YouTube videos to your downloader app",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "https://www.youtube.com/*",
+    "https://youtube.com/*",
+    "http://localhost:5000/*"
+  ],
+  "browser_action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://youtube.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"]
+    }
+  ],
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

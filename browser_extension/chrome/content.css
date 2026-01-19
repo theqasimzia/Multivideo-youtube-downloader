@@ -1,0 +1,56 @@
+/* YouTube Downloader Button Styles */
+
+.yt-downloader-button {
+  background-color: #22c55e;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-left: 10px;
+  transition: background-color 0.3s ease;
+  font-family: 'Roboto', 'Arial', sans-serif;
+}
+
+.yt-downloader-button:hover {
+  background-color: #16a34a;
+}
+
+.yt-downloader-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.yt-downloader-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 15px 20px;
+  border-radius: 8px;
+  color: white;
+  font-weight: bold;
+  z-index: 10000;
+  opacity: 0;
+  transform: translateX(100%);
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.yt-downloader-notification.show {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.yt-downloader-notification.success {
+  background-color: #22c55e;
+}
+
+.yt-downloader-notification.error {
+  background-color: #ef4444;
+}
+
+.yt-downloader-notification.info {
+  background-color: #3b82f6;
+}
