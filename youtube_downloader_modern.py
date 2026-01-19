@@ -11,6 +11,8 @@ from datetime import datetime
 import time
 import re
 import requests
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 
 # Set appearance mode and color theme
 ctk.set_appearance_mode("dark")
@@ -35,6 +37,13 @@ class YouTubeDownloaderModern:
         self.download_queue = []
         self.current_download = None
         self.queue_thread = None
+        self.queue_file = "download_queue.json"
+        
+        # Start Flask API server in background
+        self.start_api_server()
+        
+        # Periodically sync queue from file (for external additions)
+        self.sync_queue_from_file()
         
         self.setup_ui()
         self.setup_history_window()
@@ -426,6 +435,7 @@ class YouTubeDownloaderModern:
         }
         
         self.download_queue.append(queue_item)
+        self.save_queue_to_file()
         self.update_queue_display()
         self.url_var.set("")
         
@@ -670,6 +680,120 @@ class YouTubeDownloaderModern:
         try:
             with open(self.history_file, 'w') as f:
                 json.dump(self.download_history, f, indent=2)
+        except:
+            pass
+    
+    def start_api_server(self):
+        """Start Flask API server in background thread"""
+        self.api_app = Flask(__name__)
+        CORS(self.api_app)
+        
+        @self.api_app.route('/api/health', methods=['GET'])
+        def health_check():
+            return jsonify({'status': 'ok', 'message': 'API server is running'})
+        
+        @self.api_app.route('/api/add-to-queue', methods=['POST'])
+        def add_to_queue_api():
+            try:
+                data = request.json
+                url = data.get('url', '').strip()
+                
+                if not url:
+                    return jsonify({'status': 'error', 'message': 'URL is required'}), 400
+                
+                if not url.startswith(('https://www.youtube.com/', 'https://youtu.be/', 'https://youtube.com/')):
+                    return jsonify({'status': 'error', 'message': 'Invalid YouTube URL'}), 400
+                
+                # Get video title
+                title = self.get_video_title(url)
+                
+                # Get format
+                format_val = data.get('format', self.config.get('default_format', 'mp4'))
+                format_type = format_val.split(' ')[0].lower() if ' ' in format_val else format_val
+                
+                # Create queue item
+                queue_item = {
+                    'url': url,
+                    'title': title,
+                    'quality': data.get('quality', self.config.get('default_quality', 'best')),
+                    'format': format_type,
+                    'audio_bitrate': data.get('audio_bitrate', self.config.get('audio_bitrate', '192k')) if 'audio' in format_type else None,
+                    'status': 'Queued',
+                    'added_time': datetime.now().strftime("%H:%M:%S"),
+                    'source': 'browser_extension'
+                }
+                
+                # Add to queue
+                self.download_queue.append(queue_item)
+                self.save_queue_to_file()
+                
+                # Update UI on main thread
+                self.root.after(0, self.update_queue_display)
+                self.root.after(0, lambda: self.log_message(f"✅ Added from browser: {title}"))
+                
+                # Auto-download if enabled
+                if self.auto_download_var.get() and not self.is_downloading:
+                    self.root.after(0, self.start_queue)
+                
+                return jsonify({
+                    'status': 'success',
+                    'message': f'Video added to queue: {title}',
+                    'queue_item': queue_item
+                })
+            except Exception as e:
+                return jsonify({'status': 'error', 'message': str(e)}), 500
+        
+        @self.api_app.route('/api/get-queue', methods=['GET'])
+        def get_queue_api():
+            return jsonify({'status': 'success', 'queue': self.download_queue})
+        
+        # Start Flask server in background thread
+        def run_server():
+            self.api_app.run(host='localhost', port=5000, debug=False, use_reloader=False)
+        
+        server_thread = threading.Thread(target=run_server, daemon=True)
+        server_thread.start()
+        self.log_message("🌐 API server started on http://localhost:5000")
+    
+    def sync_queue_from_file(self):
+        """Periodically sync queue from JSON file (for external additions)"""
+        def sync():
+            try:
+                if os.path.exists(self.queue_file):
+                    with open(self.queue_file, 'r') as f:
+                        file_queue = json.load(f)
+                    
+                    # Add new items from file that aren't in memory queue
+                    file_urls = {item.get('url') for item in file_queue}
+                    memory_urls = {item.get('url') for item in self.download_queue}
+                    
+                    new_items = [item for item in file_queue if item.get('url') not in memory_urls]
+                    if new_items:
+                        self.download_queue.extend(new_items)
+                        self.update_queue_display()
+                        self.log_message(f"📥 Synced {len(new_items)} item(s) from file")
+                    
+                    # Clear the file after syncing
+                    if new_items:
+                        with open(self.queue_file, 'w') as f:
+                            json.dump([], f)
+            except:
+                pass
+        
+        # Sync every 2 seconds
+        def periodic_sync():
+            while True:
+                time.sleep(2)
+                sync()
+        
+        sync_thread = threading.Thread(target=periodic_sync, daemon=True)
+        sync_thread.start()
+    
+    def save_queue_to_file(self):
+        """Save queue to file"""
+        try:
+            with open(self.queue_file, 'w') as f:
+                json.dump(self.download_queue, f, indent=2)
         except:
             pass
 
