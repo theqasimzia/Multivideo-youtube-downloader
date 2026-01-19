@@ -12,7 +12,9 @@ pip install yt-dlp
 echo.
 echo Installation complete!
 echo.
-echo To run the application, use: python youtube_downloader.py
+echo To run the application, use: python youtube_downloader_modern.py
+echo.
+echo To start the API server for browser extension, use: python api_server.py
 echo.
 pause
 
