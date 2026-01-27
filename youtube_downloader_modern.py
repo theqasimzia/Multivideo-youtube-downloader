@@ -534,14 +534,136 @@ class YouTubeDownloaderModern:
             cmd.extend(['--output', f'{download_path}/%(title)s.%(ext)s'])
             cmd.extend([
                 '--no-playlist',
-                '--retries', '10',
-                '--fragment-retries', '10',
-                '--socket-timeout', '30',
-                '--http-chunk-size', '10485760',
-                '--concurrent-fragments', '4',
-                '--buffer-size', '65536'
+                '--retries', '20',                    # More retries
+                '--fragment-retries', '20',           # More fragment retries
+                '--socket-timeout', '60',             # Longer timeout
+                '--http-chunk-size', '10485760',      # Larger chunks
+                '--concurrent-fragments', '1',        # Sequential fragments (more stable)
+                '--buffer-size', '65536',             # Buffer size
+                '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                '--referer', 'https://www.youtube.com/',
+                '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                '--add-header', 'Accept-Language:en-us,en;q=0.5',
+                '--add-header', 'Accept-Encoding:gzip, deflate',
+                '--add-header', 'Connection:keep-alive',
+                '--extractor-args', 'youtube:player_client=android',  # Use Android client (more stable)
+                '--no-check-certificate',            # Skip cert check if needed
+                '--prefer-insecure',                  # Prefer HTTP if HTTPS fails
+                '--sleep-requests', '2',              # Sleep between requests
+                '--sleep-interval', '5',              # Sleep interval
+                '--max-sleep-interval', '10'          # Max sleep
             ])
             cmd.append(url)
+            
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                cwd=download_path,
+                bufsize=1,
+                shell=False
+            )
+            
+            error_count = 0
+            max_errors = 10
+            last_progress = 0
+            stall_count = 0
+            
+            for line in process.stdout:
+                line = line.strip()
+                if line:
+                    self.log_message(line)
+                    
+                    # Handle 403 errors
+                    if 'HTTP Error 403' in line or 'Forbidden' in line:
+                        error_count += 1
+                        self.log_message(f"⚠️ 403 Error detected (attempt {error_count}/{max_errors})")
+                        if error_count >= max_errors:
+                            self.log_message("❌ Too many 403 errors. Trying alternative method...")
+                            # Try with different client
+                            return self.download_with_alternative_method(item)
+                    
+                    # Track progress
+                    if '[download]' in line and '%' in line:
+                        try:
+                            parts = line.split('%')[0].split()
+                            if parts:
+                                percent = float(parts[-1])
+                                self.progress_var.set(percent)
+                                self.progress_label.configure(text=f"Downloading... {percent:.1f}%")
+                                
+                                # Check for stalled download
+                                if percent == last_progress:
+                                    stall_count += 1
+                                    if stall_count > 20:
+                                        self.log_message("⚠️ Download appears stalled, retrying...")
+                                        process.terminate()
+                                        return self.download_with_alternative_method(item)
+                                else:
+                                    stall_count = 0
+                                    last_progress = percent
+                        except:
+                            pass
+            
+            return_code = process.wait()
+            
+            # If failed, try alternative method
+            if return_code != 0:
+                self.log_message("❌ Download failed, trying alternative method...")
+                return self.download_with_alternative_method(item)
+            
+            return True
+            
+        except Exception as e:
+            self.log_message(f"❌ Error: {str(e)}")
+            # Try alternative method as fallback
+            return self.download_with_alternative_method(item)
+    
+    def download_with_alternative_method(self, item):
+        """Try downloading with alternative method (different client/extractor)"""
+        try:
+            self.log_message("🔄 Trying alternative download method...")
+            url = item['url']
+            quality = item['quality']
+            format_type = item['format']
+            download_path = self.path_var.get()
+            
+            cmd = ['yt-dlp']
+            
+            # Audio extraction
+            if format_type in ['mp3', 'm4a', 'wav', 'opus']:
+                cmd.extend(['-x', '--audio-format', format_type])
+                if item.get('audio_bitrate'):
+                    cmd.extend(['--audio-quality', item['audio_bitrate']])
+            else:
+                # Video format - try with different client
+                if quality == 'best':
+                    cmd.extend(['--format', 'best'])
+                else:
+                    cmd.extend(['--format', f'best[height<={quality}]'])
+                
+                if format_type != 'best':
+                    cmd.extend(['--merge-output-format', format_type])
+            
+            cmd.extend(['--output', f'{download_path}/%(title)s.%(ext)s'])
+            
+            # Alternative options - use web client instead of android
+            cmd.extend([
+                '--no-playlist',
+                '--extractor-args', 'youtube:player_client=web',  # Try web client
+                '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                '--referer', 'https://www.youtube.com/',
+                '--retries', '15',
+                '--fragment-retries', '15',
+                '--socket-timeout', '45',
+                '--sleep-requests', '3',
+                '--sleep-interval', '8'
+            ])
+            
+            cmd.append(url)
+            
+            self.log_message("🔧 Alternative command: " + ' '.join(cmd[:10]) + "...")
             
             process = subprocess.Popen(
                 cmd,
@@ -563,7 +685,7 @@ class YouTubeDownloaderModern:
                             if parts:
                                 percent = float(parts[-1])
                                 self.progress_var.set(percent)
-                                self.progress_label.configure(text=f"Downloading... {percent:.1f}%")
+                                self.progress_label.configure(text=f"Downloading (alt)... {percent:.1f}%")
                         except:
                             pass
             
@@ -571,7 +693,7 @@ class YouTubeDownloaderModern:
             return return_code == 0
             
         except Exception as e:
-            self.log_message(f"❌ Error: {str(e)}")
+            self.log_message(f"❌ Alternative method also failed: {str(e)}")
             return False
     
     def download_now(self):
